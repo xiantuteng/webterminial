@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>终端</title>
+<link rel="stylesheet" href="/wt/vendor/xterm.css">
+<style>
+:root {
+    --ink: #14171c;
+    --panel: #1c2128;
+    --line: #313a46;
+    --text: #e6ebf2;
+    --muted: #8b97a6;
+    --amber: #e2a35a;
+    --fault: #d76a5a;
+    --term: #101318;
+}
+* { box-sizing: border-box; }
+html, body {
+    height: 100%;
+    overflow: hidden;
+}
+body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--text);
+    font-family: "Avenir Next", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", sans-serif;
+    font-size: 14px;
+}
+button, input { font: inherit; color: inherit; }
+button {
+    background: transparent;
+    border: 1px solid var(--line);
+    padding: 4px 10px;
+    cursor: pointer;
+}
+button:hover { border-color: var(--amber); color: var(--amber); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+.app { height: 100%; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.bar {
+    height: 48px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 14px;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+}
+.lamp {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    flex: none;
+}
+.lamp.on { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+.lamp.off { background: var(--fault); }
+.who { font-weight: 600; letter-spacing: 0.01em; }
+.spacer { flex: 1; }
+.workspace { flex: 1; min-height: 0; min-width: 0; display: flex; overflow: hidden; }
+.files {
+    width: 320px;
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+}
+.split {
+    width: 5px;
+    flex: none;
+    cursor: col-resize;
+    background: transparent;
+}
+.split:hover { background: #3a2a18; }
+.file-head, .file-tools { padding: 10px 12px; }
+.file-head {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border-bottom: 1px solid var(--line);
+}
+.kicker {
+    color: var(--muted);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+}
+.path {
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px;
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    padding: 1px 0;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    appearance: none;
+    -webkit-appearance: none;
+}
+.file-tools { display: flex; gap: 8px; }
+.list {
+    flex: 1;
+    overflow-x: hidden;
+    overflow-y: auto;
+    min-height: 0;
+    scrollbar-width: thin;
+    scrollbar-color: #3a4452 transparent;
+}
+.row, .up {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 8px;
+    align-items: center;
+    width: 100%;
+    padding: 6px 12px;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid rgba(49, 58, 70, 0.55);
+    text-align: left;
+    cursor: pointer;
+}
+.up { grid-template-columns: 1fr; color: var(--muted); }
+.name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    background: none;
+    border: 0;
+    padding: 0;
+    text-align: left;
+    cursor: pointer;
+}
+.name.dir { color: var(--amber); }
+.size, .time {
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px;
+    color: var(--muted);
+}
+.dl {
+    border: 0;
+    padding: 0;
+    color: var(--text);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    background: none;
+    cursor: pointer;
+}
+.status { min-height: 32px; padding: 6px 12px 10px; color: var(--muted); font-size: 12px; }
+.status.bad { color: var(--fault); }
+.term-wrap {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    background: var(--term);
+    overflow: hidden;
+    position: relative;
+}
+.term-wrap .xterm {
+    height: 100%;
+    padding: 0;
+}
+.term-wrap .xterm-viewport {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    background-color: transparent !important;
+    scrollbar-width: thin;
+    scrollbar-color: #3a4452 transparent;
+}
+.list::-webkit-scrollbar,
+.term-wrap .xterm-viewport::-webkit-scrollbar {
+    width: 8px;
+}
+.list::-webkit-scrollbar-thumb,
+.term-wrap .xterm-viewport::-webkit-scrollbar-thumb {
+    background: #3a4452;
+    border-radius: 8px;
+}
+.empty { padding: 16px 12px; color: var(--muted); }
+@media (max-width: 860px) {
+    .workspace { flex-direction: column; }
+    .files { width: auto !important; height: 38vh; border-right: 0; border-bottom: 1px solid var(--line); }
+    .split { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .lamp.on { box-shadow: none; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+    <header class="bar">
+        <span id="lamp" class="lamp"></span>
+        <span id="who" class="who">正在确认登录</span>
+        <span class="spacer"></span>
+        <button id="logout" type="button">退出</button>
+    </header>
+    <div class="workspace" id="workspace">
+        <aside class="files" id="files">
+            <div class="file-head">
+                <div class="kicker">文件</div>
+                <input id="path" class="path" type="text" value="~" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="路径">
+            </div>
+            <div class="file-tools">
+                <button id="upload" type="button">上传</button>
+                <button id="refresh" type="button">刷新</button>
+                <input id="picker" type="file" multiple hidden>
+            </div>
+            <div id="list" class="list"></div>
+            <div id="status" class="status"></div>
+        </aside>
+        <div class="split" id="split"></div>
+        <div class="term-wrap" id="termHost"></div>
+    </div>
+</div>
+<script src="/wt/vendor/xterm.js"></script>
+<script src="/wt/vendor/xterm-addon-fit.js"></script>
+<script>
+(function () {
+    var current = "";
+    var ended = false;
+    var ws = null;
+    var term = null;
+    var fit = null;
+    var lamp = document.getElementById("lamp");
+    var who = document.getElementById("who");
+    var list = document.getElementById("list");
+    var pathInput = document.getElementById("path");
+    var loadTicket = 0;
+    var status = document.getElementById("status");
+    var files = document.getElementById("files");
+    var workspace = document.getElementById("workspace");
+    var split = document.getElementById("split");
+
+    fetch("/wt/api/session", {credentials: "same-origin"})
+        .then(function (response) { return response.json(); })
+        .then(function (data) {
+            if (!data || !data.authenticated) {
+                window.location.replace("/wt/");
+                return;
+            }
+            who.textContent = data.username + " @ " + (data.host || "localhost");
+            bootTerm();
+            load("");
+        })
+        .catch(function () {
+            window.location.replace("/wt/");
+        });
+
+    document.getElementById("logout").addEventListener("click", function () {
+        fetch("/wt/api/logout", {method: "POST", credentials: "same-origin"})
+            .then(function () { window.location.replace("/wt/"); });
+    });
+    document.getElementById("refresh").addEventListener("click", function () { load(current); });
+    pathInput.addEventListener("keydown", function (event) {
+        if (event.key === "Enter" && !event.isComposing) {
+            event.preventDefault();
+            load(pathInput.value);
+        }
+    });
+    pathInput.addEventListener("blur", function () {
+        if (pathInput.value !== displayPath(current)) {
+            load(pathInput.value);
+        }
+    });
+    document.getElementById("upload").addEventListener("click", function () {
+        document.getElementById("picker").click();
+    });
+    document.getElementById("picker").addEventListener("change", function (event) {
+        uploadList(event.target.files);
+        event.target.value = "";
+    });
+    files.addEventListener("dragover", function (event) {
+        event.preventDefault();
+    });
+    files.addEventListener("drop", function (event) {
+        event.preventDefault();
+        if (event.dataTransfer && event.dataTransfer.files) {
+            uploadList(event.dataTransfer.files);
+        }
+    });
+
+    var dragging = false;
+    split.addEventListener("pointerdown", function (event) {
+        if (window.innerWidth <= 860) return;
+        dragging = true;
+        split.setPointerCapture(event.pointerId);
+    });
+    split.addEventListener("pointermove", function (event) {
+        if (!dragging) return;
+        var rect = workspace.getBoundingClientRect();
+        var width = event.clientX - rect.left;
+        if (width < 200) width = 200;
+        if (width > rect.width - 360) width = rect.width - 360;
+        files.style.width = width + "px";
+        layout();
+    });
+    split.addEventListener("pointerup", function () { dragging = false; });
+
+    function bootTerm() {
+        var blink = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        term = new Terminal({
+            cursorBlink: blink,
+            fontFamily: '"SF Mono", Menlo, Consolas, monospace',
+            fontSize: 14,
+            scrollback: 5000,
+            theme: {
+                background: "#101318",
+                foreground: "#e6ebf2",
+                cursor: "#e2a35a",
+                cursorAccent: "#101318",
+                selectionBackground: "#3d4654",
+                black: "#101318",
+                red: "#e06c75",
+                green: "#98c379",
+                yellow: "#e2a35a",
+                blue: "#61afef",
+                magenta: "#c678dd",
+                cyan: "#56b6c2",
+                white: "#e6ebf2",
+                brightBlack: "#5c6370",
+                brightWhite: "#ffffff"
+            }
+        });
+        fit = new FitAddon.FitAddon();
+        term.loadAddon(fit);
+        term.open(document.getElementById("termHost"));
+        term.focus();
+        var proto = location.protocol === "https:" ? "wss://" : "ws://";
+        ws = new WebSocket(proto + location.host + "/wt/ws/terminal");
+        ws.onopen = function () {
+            lamp.className = "lamp on";
+            layout();
+        };
+        ws.onmessage = function (event) {
+            var msg;
+            try { msg = JSON.parse(event.data); } catch (e) { return; }
+            if (msg.type === "data" && msg.data) term.write(msg.data);
+            if (msg.type === "error") notice(safe(msg.message), "31");
+            if (msg.type === "exit") notice("会话已结束", "33");
+        };
+        ws.onclose = function () {
+            lamp.className = "lamp off";
+            notice("连接已断开", "33");
+        };
+        term.onData(function (data) {
+            send({type: "data", data: data});
+        });
+        window.addEventListener("resize", layout);
+        window.setInterval(function () { send({type: "ping"}); }, 25000);
+    }
+
+    function layout() {
+        if (!fit || !term) return;
+        fit.fit();
+        send({type: "resize", cols: term.cols, rows: term.rows});
+    }
+
+    function send(payload) {
+        if (ws && ws.readyState === 1) {
+            ws.send(JSON.stringify(payload));
+        }
+    }
+
+    function notice(text, color) {
+        if (ended || !term) return;
+        ended = true;
+        term.write("\r\n\x1b[" + color + "m" + text + "\x1b[0m\r\n");
+    }
+
+    function safe(value) {
+        return String(value || "终端出错").replace(/[\u0000-\u001f\u007f]/g, " ");
+    }
+
+    function load(path) {
+        var ticket = ++loadTicket;
+        var requested = path == null ? "" : String(path);
+        var shown = displayPath(current);
+        return fetch("/wt/api/files?path=" + encodeURIComponent(requested), {credentials: "same-origin"})
+            .then(function (response) {
+                if (response.status === 401) {
+                    window.location.replace("/wt/");
+                    return null;
+                }
+                return response.json();
+            })
+            .then(function (data) {
+                if (ticket !== loadTicket) return;
+                if (!data) return;
+                if (!data.ok) {
+                    setStatus(data.message || "无法读取目录", true);
+                    restorePath(requested);
+                    return;
+                }
+                current = data.path || "";
+                showPath(shown, requested);
+                render(data.entries || [], !!data.truncated);
+                setStatus(data.truncated ? "只显示前 2000 项" : "", false);
+            })
+            .catch(function () {
+                if (ticket !== loadTicket) return;
+                setStatus("无法读取目录", true);
+                restorePath(requested);
+            });
+    }
+
+    function displayPath(relative) {
+        if (relative && relative.charAt(0) === "/") {
+            return relative;
+        }
+        return relative ? "~/" + relative : "~";
+    }
+
+    function showPath(previousShown, requested) {
+        var next = displayPath(current);
+        if (document.activeElement !== pathInput || pathInput.value === previousShown || pathInput.value === requested || pathInput.value === next) {
+            pathInput.value = next;
+        }
+    }
+
+    function restorePath(requested) {
+        if (document.activeElement !== pathInput || pathInput.value === requested) {
+            pathInput.value = displayPath(current);
+        }
+    }
+
+    function render(entries, truncated) {
+        list.textContent = "";
+        if (current && current !== "/") {
+            var up = document.createElement("button");
+            up.type = "button";
+            up.className = "up";
+            up.textContent = "..";
+            up.addEventListener("click", function () { load(parentPath(current)); });
+            list.appendChild(up);
+        }
+        if (!entries.length && !current) {
+            var empty = document.createElement("div");
+            empty.className = "empty";
+            empty.textContent = "这个目录是空的";
+            list.appendChild(empty);
+            return;
+        }
+        if (!entries.length) {
+            var emptyDir = document.createElement("div");
+            emptyDir.className = "empty";
+            emptyDir.textContent = "这个目录是空的";
+            list.appendChild(emptyDir);
+        }
+        entries.forEach(function (entry) {
+            var row = document.createElement("div");
+            row.className = "row";
+            var name = document.createElement("button");
+            name.type = "button";
+            name.className = "name" + (entry.directory ? " dir" : "");
+            name.textContent = entry.name;
+            name.title = entry.name;
+            if (entry.directory) {
+                name.addEventListener("click", function () {
+                    load(join(current, entry.name));
+                });
+            }
+            var size = document.createElement("span");
+            size.className = "size";
+            size.textContent = entry.directory ? "" : human(entry.size);
+            row.appendChild(name);
+            row.appendChild(size);
+            if (!entry.directory) {
+                var download = document.createElement("button");
+                download.type = "button";
+                download.className = "dl";
+                download.textContent = "下载";
+                download.addEventListener("click", function () {
+                    var link = document.createElement("a");
+                    link.href = "/wt/api/files/download?path=" + encodeURIComponent(utf8Base64(join(current, entry.name)));
+                    link.download = entry.name;
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                });
+                row.appendChild(download);
+            } else {
+                row.appendChild(document.createElement("span"));
+            }
+            list.appendChild(row);
+        });
+    }
+
+    function uploadList(fileList) {
+        var filesToSend = Array.prototype.slice.call(fileList || []);
+        if (!filesToSend.length) return;
+        var chain = Promise.resolve();
+        filesToSend.forEach(function (file) {
+            chain = chain.then(function () { return uploadOne(file); });
+        });
+        chain.then(function () {
+            setStatus("上传完成", false);
+            return load(current);
+        }).catch(function (error) {
+            setStatus(error.message || "上传失败", true);
+            load(current);
+        });
+    }
+
+    function uploadOne(file) {
+        var body = new FormData();
+        body.append("path", current);
+        body.append("file", file, utf8Base64(file.name));
+        setStatus("正在上传 " + file.name, false);
+        return fetch("/wt/api/files/upload", {method: "POST", body: body, credentials: "same-origin"})
+            .then(function (response) {
+                if (response.status === 401) {
+                    window.location.replace("/wt/");
+                    throw new Error("未登录");
+                }
+                return response.json();
+            })
+            .then(function (data) {
+                if (!data.ok) {
+                    throw new Error(data.message || "上传失败");
+                }
+            });
+    }
+
+    function setStatus(text, bad) {
+        status.textContent = text || "";
+        status.className = bad ? "status bad" : "status";
+    }
+
+    function utf8Base64(value) {
+        return btoa(unescape(encodeURIComponent(value)));
+    }
+
+    function join(dir, name) {
+        return dir ? dir.replace(/\/$/, "") + "/" + name : name;
+    }
+
+    function parentPath(dir) {
+        if (dir.charAt(0) === "/") {
+            var trimmed = dir.replace(/\/+$/, "");
+            if (!trimmed) {
+                return "/";
+            }
+            var slash = trimmed.lastIndexOf("/");
+            return slash <= 0 ? "/" : trimmed.substring(0, slash);
+        }
+        var index = dir.lastIndexOf("/");
+        return index < 0 ? "" : dir.substring(0, index);
+    }
+
+    function human(size) {
+        var n = Number(size) || 0;
+        if (n < 1024) return n + " B";
+        var units = ["KB", "MB", "GB", "TB"];
+        var value = n / 1024;
+        var unit = units[0];
+        for (var i = 0; i < units.length; i++) {
+            unit = units[i];
+            if (value < 1024 || i === units.length - 1) break;
+            value = value / 1024;
+        }
+        return value.toFixed(value >= 10 ? 0 : 1) + " " + unit;
+    }
+})();
+</script>
+</body>
+</html>
